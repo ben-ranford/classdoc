@@ -109,7 +109,7 @@ class DocumentationGenerator:
         except ValueError:
             doc_path = Path(file_path).name
 
-        prompt = f"""Generate comprehensive markdown documentation for the following code file.
+        prompt = f"""Generate comprehensive markdown documentation for the following code file. IF the file content itself is EMPTY DO NOT ELABORATE FURTHER WITH ANY OF THE ABOVE OR BELOW & refuse to generate documentation.
 
         When printing the file path, ensure you don't include anything above the project root path (i.e. /users/username/...). Don't output the code for the entire file, just relevant usage examples (If applicable).
 
