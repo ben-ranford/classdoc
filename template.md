@@ -10,7 +10,7 @@ Brief description of the file's purpose and functionality.
 - Dependency 1
 - Dependency 2
 
-## Definition
+## Definition (If applicable)
 
 ## Attributes
 | Attribute | Type | Description |
@@ -39,4 +39,4 @@ def method_name(self, param1: type, param2: type) -> return_type:
 ```
 
 ## Usage Examples
-usage examples in code blocks go here
+usage examples in code blocks go here if applicable

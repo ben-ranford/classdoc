@@ -1,8 +1,28 @@
+# Documentation generator configuration
 backend: perplexity
-output_directory: docs  # or any other directory path you prefer
+output_directory: docs
+base_directory: /path/to/your/project  # Optional, defaults to current working directory
+
+# Directories to exclude from documentation generation
+excluded_dirs:
+  - venv
+  - .venv
+  - env
+  - .env
+  - node_modules
+  - .git
+  - __pycache__
+  - .pytest_cache
+  - .idea
+  - .vscode
+  # Add any other directories you want to exclude
+
+# Perplexity API configuration
 perplexity:
-  api_key: your_api_key
-  model: your_model
+  api_key: your_api_key_here
+  model: your_model_name
+
+# LM Studio configuration
 lmstudio:
   port: 1234
-  model: your_model
+  model: your_model_name
