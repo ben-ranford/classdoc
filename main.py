@@ -4,6 +4,7 @@ import logging
 import yaml
 from openai import OpenAI
 import requests
+import argparse
 
 class LLMBackend:
     def __init__(self, config):
@@ -44,7 +45,12 @@ class DocumentationGenerator:
     def __init__(self, config_path="config.yaml"):
         self.config = self._load_config(config_path)
         self.docs_dir = Path(self.config.get('output_directory', 'docs'))
+        self.base_dir = Path(self.config.get('base_directory', os.getcwd()))
         self.supported_extensions = ['.py', '.js', '.ts']
+        self.excluded_dirs = self.config.get('excluded_dirs', [
+            'venv', '.venv', 'env', '.env', 'node_modules', '.git', 
+            '__pycache__', '.pytest_cache', '.idea', '.vscode'
+        ])
         self.llm_backend = LLMBackend(self.config)
         self._setup_logging()
         
@@ -62,9 +68,26 @@ class DocumentationGenerator:
     def _create_docs_directory(self):
         self.docs_dir.mkdir(exist_ok=True)
 
-    def _generate_doc_path(self, file_path):
-        relative_path = file_path.relative_to(Path.cwd())
-        doc_path = self.docs_dir / f"{relative_path.with_suffix('.md')}"
+    def _should_skip_directory(self, dir_path):
+        """Check if directory should be skipped based on exclusion rules."""
+        dir_name = Path(dir_path).name
+        return (dir_name.startswith('.') or 
+                dir_name in self.excluded_dirs or 
+                self.docs_dir.name in Path(dir_path).parts)
+
+    def _generate_doc_path(self, file_path, input_dir=None):
+        try:
+            if input_dir:
+                # If input directory is specified, make paths relative to it
+                relative_path = Path(file_path).resolve().relative_to(Path(input_dir).resolve())
+            else:
+                relative_path = Path(file_path).resolve().relative_to(self.base_dir)
+        except ValueError:
+            relative_path = Path(file_path).name
+            self.logger.warning(f"File {file_path} is not in base directory {self.base_dir}. "
+                              f"Using filename only.")
+            
+        doc_path = self.docs_dir / relative_path.with_suffix('.md')
         doc_path.parent.mkdir(parents=True, exist_ok=True)
         return doc_path
 
@@ -76,19 +99,24 @@ class DocumentationGenerator:
         with open(template_path, 'r', encoding='utf-8') as f:
             return f.read()
 
-    def _generate_documentation(self, file_content, file_path, template):
+    def _generate_documentation(self, file_content, file_path, template, input_dir=None):
+        # Get relative path from project root or input directory for documentation
+        try:
+            if input_dir:
+                doc_path = Path(file_path).resolve().relative_to(Path(input_dir).resolve())
+            else:
+                doc_path = Path(file_path).resolve().relative_to(self.base_dir)
+        except ValueError:
+            doc_path = Path(file_path).name
+
         prompt = f"""Generate comprehensive markdown documentation for the following code file.
-        Include:
-        - File overview
-        - Dependencies
-        - Classes and methods with descriptions
-        - Usage examples
-        - Any important notes
+
+        When printing the file path, ensure you don't include anything above the project root path (i.e. /users/username/...). Don't output the code for the entire file, just relevant usage examples (If applicable).
 
         Format:
         {template}
         
-        File path: {file_path}
+        File path (from the project root): {doc_path}
         
         Code:
         {file_content}
@@ -108,35 +136,93 @@ class DocumentationGenerator:
         except Exception as e:
             self.logger.error(f"Error writing documentation to {doc_path}: {str(e)}")
 
-    def generate_docs(self, source_dir="."):
+    def _regenerate_single_file(self, file_path, input_dir=None):
+        """Process a single file for documentation regeneration."""
+        try:
+            file_content = self._get_file_content(file_path)
+            template = self._get_template_content("template.md")
+            doc_content = self._generate_documentation(file_content, file_path, template, input_dir)
+            
+            if doc_content:
+                doc_path = self._generate_doc_path(file_path, input_dir)
+                self._write_documentation(doc_content, doc_path)
+                return True
+            return False
+        except Exception as e:
+            self.logger.error(f"Error regenerating documentation for {file_path}: {str(e)}")
+            return False
+
+    def generate_docs(self, source_dir=None, single_file=None, input_dir=None):
         self._create_docs_directory()
         
-        for root, _, files in os.walk(source_dir):
-            if self.docs_dir.name in root:
-                continue
-                
+        if single_file:
+            single_file_path = Path(single_file)
+            if not single_file_path.exists():
+                self.logger.error(f"File {single_file} does not exist.")
+                return
+            if single_file_path.suffix not in self.supported_extensions:
+                self.logger.error(f"File {single_file} has unsupported extension. "
+                                f"Supported extensions: {self.supported_extensions}")
+                return
+            
+            self.logger.info(f"Regenerating documentation for single file: {single_file_path}")
+            success = self._regenerate_single_file(single_file_path, input_dir)
+            if success:
+                self.logger.info("Single file documentation regeneration completed successfully.")
+            return
+
+        if input_dir:
+            source_dir = Path(input_dir)
+        elif source_dir is None:
+            source_dir = self.base_dir
+        else:
+            source_dir = Path(source_dir)
+            
+        self.logger.info(f"Base directory: {self.base_dir}")
+        self.logger.info(f"Output directory: {self.docs_dir}")
+        self.logger.info(f"Source directory: {source_dir}")
+        
+        files_processed = 0
+        files_succeeded = 0
+        
+        for root, dirs, files in os.walk(source_dir):
+            # Modify dirs in-place to skip excluded directories
+            dirs[:] = [d for d in dirs if not self._should_skip_directory(os.path.join(root, d))]
+            
             for file in files:
                 file_path = Path(root) / file
                 
                 if file_path.suffix not in self.supported_extensions:
                     continue
                     
+                files_processed += 1
                 self.logger.info(f"Processing: {file_path}")
                 
-                file_content = self._get_file_content(file_path)
-                template = self._get_template_content("template.md")
-                doc_content = self._generate_documentation(file_content, file_path, template)
-                
-                if doc_content:
-                    doc_path = self._generate_doc_path(file_path)
-                    self._write_documentation(doc_content, doc_path)
+                if self._regenerate_single_file(file_path, input_dir):
+                    files_succeeded += 1
+
+        self.logger.info(f"Documentation generation completed. "
+                        f"Processed: {files_processed}, "
+                        f"Succeeded: {files_succeeded}, "
+                        f"Failed: {files_processed - files_succeeded}")
 
 def main():
+    parser = argparse.ArgumentParser(description='Documentation Generator')
+    parser.add_argument('--file', '-f', 
+                       help='Specify a single file to regenerate its documentation')
+    parser.add_argument('--input', '-i',
+                       help='Specify an input directory to process')
+    parser.add_argument('--config', '-c', 
+                       default='config.yaml',
+                       help='Path to configuration file (default: config.yaml)')
+    args = parser.parse_args()
+
     try:
-        generator = DocumentationGenerator()
-        generator.generate_docs()
+        generator = DocumentationGenerator(config_path=args.config)
+        generator.generate_docs(single_file=args.file, input_dir=args.input)
     except Exception as e:
         logging.error(f"Documentation generation failed: {str(e)}")
+        raise
 
 if __name__ == "__main__":
     main()
