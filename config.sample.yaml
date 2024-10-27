@@ -1,0 +1,8 @@
+backend: perplexity
+output_directory: docs  # or any other directory path you prefer
+perplexity:
+  api_key: your_api_key
+  model: your_model
+lmstudio:
+  port: 1234
+  model: your_model
