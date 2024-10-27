@@ -5,6 +5,7 @@ import yaml
 from openai import OpenAI
 import requests
 import argparse
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 class LLMBackend:
     def __init__(self, config):
@@ -16,9 +17,16 @@ class LLMBackend:
             return self._perplexity_completion(prompt)
         elif self.backend == 'lmstudio':
             return self._lmstudio_completion(prompt)
+        elif self.backend == 'huggingface':
+            return self._huggingface_completion(prompt)
         else:
             raise ValueError(f"Unsupported backend: {self.backend}")
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type(requests.exceptions.HTTPError)
+    )
     def _perplexity_completion(self, prompt):
         client = OpenAI(
             api_key=self.config['perplexity']['api_key'],
@@ -30,6 +38,11 @@ class LLMBackend:
         )
         return response.choices[0].message.content
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type(requests.exceptions.HTTPError)
+    )
     def _lmstudio_completion(self, prompt):
         url = f"http://localhost:{self.config['lmstudio']['port']}/v1/chat/completions"
         payload = {
@@ -40,6 +53,29 @@ class LLMBackend:
         response = requests.post(url, json=payload)
         response.raise_for_status()
         return response.json()['choices'][0]['message']['content']
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type(requests.exceptions.HTTPError)
+    )
+    def _huggingface_completion(self, prompt):
+        headers = {
+            "Authorization": f"Bearer {self.config['huggingface']['api_key']}",
+            "Content-Type": "application/json"
+        }
+        api_url = f"https://api-inference.huggingface.co/models/{self.config['huggingface']['model']}"
+        payload = {
+            "inputs": prompt,
+            "parameters": {
+                "temperature": self.config['huggingface'].get('temperature', 0.7),
+                "max_new_tokens": self.config['huggingface'].get('max_new_tokens', 8192),
+                "return_full_text": False
+            }
+        }
+        response = requests.post(api_url, headers=headers, json=payload)
+        response.raise_for_status()
+        return response.json()[0]['generated_text']
 
 class DocumentationGenerator:
     def __init__(self, config_path="config.yaml"):
@@ -78,7 +114,6 @@ class DocumentationGenerator:
     def _generate_doc_path(self, file_path, input_dir=None):
         try:
             if input_dir:
-                # If input directory is specified, make paths relative to it
                 relative_path = Path(file_path).resolve().relative_to(Path(input_dir).resolve())
             else:
                 relative_path = Path(file_path).resolve().relative_to(self.base_dir)
@@ -100,7 +135,6 @@ class DocumentationGenerator:
             return f.read()
 
     def _generate_documentation(self, file_content, file_path, template, input_dir=None):
-        # Get relative path from project root or input directory for documentation
         try:
             if input_dir:
                 doc_path = Path(file_path).resolve().relative_to(Path(input_dir).resolve())
@@ -109,7 +143,7 @@ class DocumentationGenerator:
         except ValueError:
             doc_path = Path(file_path).name
 
-        prompt = f"""Generate comprehensive markdown documentation for the following code file. IF the file content itself is EMPTY DO NOT ELABORATE FURTHER WITH ANY OF THE ABOVE OR BELOW & refuse to generate documentation.
+        prompt = f"""Generate comprehensive markdown documentation for the following code file. IF the file content itself is EMPTY DO NOT ELABORATE FURTHER WITH ANY OF THE ABOVE OR BELOW & do not generate documentation. do not provide any further information. Do not provide placeholders. Do not reference the instructions.
 
         When printing the file path, ensure you don't include anything above the project root path (i.e. /users/username/...). Don't output the code for the entire file, just relevant usage examples (If applicable).
 
@@ -137,7 +171,6 @@ class DocumentationGenerator:
             self.logger.error(f"Error writing documentation to {doc_path}: {str(e)}")
 
     def _regenerate_single_file(self, file_path, input_dir=None):
-        """Process a single file for documentation regeneration."""
         try:
             file_content = self._get_file_content(file_path)
             template = self._get_template_content("template.md")
@@ -186,7 +219,6 @@ class DocumentationGenerator:
         files_succeeded = 0
         
         for root, dirs, files in os.walk(source_dir):
-            # Modify dirs in-place to skip excluded directories
             dirs[:] = [d for d in dirs if not self._should_skip_directory(os.path.join(root, d))]
             
             for file in files:
