@@ -1,85 +1,151 @@
-# DocumentationGenerator
+## LLMBackend
 
-## Overview
-The `DocumentationGenerator` class is responsible for generating markdown documentation for supported files (currently `.py`, `.js`, and `.ts`) based on their content. It uses a Language Model (LLM) backend to generate documentation templates for the given files.
+### Overview
+This class provides an abstraction layer for interacting with various Large Language Model (LLM) backends, such as Perplexity AI, LM Studio, and Hugging Face. It handles the complexities of communicating with each backend's API and manages retries using the `tenacity` library to handle transient errors like HTTP errors.
 
-## Dependencies
-- `os`: For operating system related functionalities.
-- `pathlib`: To handle file paths and directories.
-- `logging`: For logging purposes.
-- `yaml`: To load the configuration file.
-- `openai`: For interacting with the Perplexity AI API (if configured).
-- `requests`: For making HTTP requests to LMStudio API (if configured).
-- `argparse`: To handle command-line arguments.
+### Dependencies
+- os
+- pathlib
+- logging
+- yaml
+- openai
+- requests
+- argparse
+- tenacity
 
-## Definition
-```python
-class DocumentationGenerator:
-    def __init__(self, config_path="config.yaml"):
-        self.config = self._load_config(config_path)
-        #... rest of the constructor...
-```
 ## Attributes
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| config | dict | The configuration loaded from the YAML file. |
-| docs_dir | `pathlib.Path` | The directory where generated documentation will be stored. |
-| base_dir | `pathlib.Path` | The base directory from which files will be processed. |
-| supported_extensions | list[str] | List of supported file extensions for documentation generation. |
-| excluded_dirs | list[str] | List of directories to exclude from processing. |
-| llm_backend | `LLMBackend` | The Language Model backend used for generating documentation templates. |
-| logger | `logging.Logger` | The logger instance for logging purposes. |
+| config | dict | Configuration dictionary loaded from the YAML file.  Contains API keys, model names, ports and other backend specific information.|
+| backend | str | The currently selected LLM backend (e.g., 'perplexity', 'lmstudio', 'huggingface').|
 
 ## Methods
-### `__init__(self, config_path="config.yaml")`
-Initializes the `DocumentationGenerator` instance with the given configuration file path.
 
-### `_load_config(self, config_path)`
-Loads and returns the configuration from the given YAML file path.
+### `__init__(self, config)`
+```python
+def __init__(self, config):
+    """
+    Initializes the LLMBackend with a configuration dictionary.
 
-### `_setup_logging(self)`
-Configures and sets up logging for the instance using `logging.basicConfig`.
+    Args:
+        config (dict): A dictionary containing backend-specific configurations 
+                       (e.g., API keys, model names).
+    """
+```
 
-### `_create_docs_directory(self)`
-Creates the documentation directory if it doesn't exist.
+### `generate_completion(self, prompt)`
+```python
+def generate_completion(self, prompt):
+    """
+    Generates a completion from the configured LLM backend.
 
-### `_should_skip_directory(self, dir_path)`
-Checks if a directory should be skipped based on exclusion rules.
+    Args:
+        prompt (str): The input prompt to send to the LLM.
 
-### `_generate_doc_path(self, file_path, input_dir=None)`
-Generates and returns the documentation path based on the given file path and input directory.
+    Returns:
+        str: The generated text completion from the LLM.
 
-### `_get_file_content(self, file_path)`
-Returns the content of the given file path.
+    Raises:
+        ValueError: If an unsupported backend is specified in the configuration.
+    """
+```
 
-### `_get_template_content(self, template_path)`
-Returns the content of the given template path.
+### `_perplexity_completion(self, prompt)`
+```python
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type(requests.exceptions.HTTPError)
+)
+def _perplexity_completion(self, prompt):
+    """
+    Generates a completion using the Perplexity AI API.
 
-### `_generate_documentation(self, file_content, file_path, template, input_dir=None)`
-Generates and returns the markdown documentation content for the given file using the LLM backend and template.
+    Args:
+        prompt (str): The input prompt to send to Perplexity AI.
 
-### `_write_documentation(self, doc_content, doc_path)`
-Writes the generated documentation content to the given file path.
+    Returns:
+        str: The generated text completion from Perplexity AI.
 
-### `_regenerate_single_file(self, file_path, input_dir=None)`
-Processes a single file for documentation regeneration.
+    Raises:
+        requests.exceptions.HTTPError: If there is an HTTP error during the request 
+                                         (retried up to 3 times with exponential backoff).
+    """
+```
 
-### `generate_docs(self, source_dir=None, single_file=None, input_dir=None)`
-Generates documentation for files in the specified or default directories. If `single_file` is provided, regenerates documentation only for that file.
+### `_lmstudio_completion(self, prompt)`
+```python
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type(requests.exceptions.HTTPError)
+)
+def _lmstudio_completion(self, prompt):
+    """
+    Generates a completion using LM Studio's API.
+
+    Args:
+        prompt (str): The input prompt to send to LM Studio.
+
+    Returns:
+        str: The generated text completion from LM Studio.
+
+    Raises:
+        requests.exceptions.HTTPError: If there is an HTTP error during the request 
+                                         (retried up to 3 times with exponential backoff).
+    """
+```
+
+### `_huggingface_completion(self, prompt)`
+```python
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type(requests.exceptions.HTTPError)
+)
+def _huggingface_completion(self, prompt):
+    """
+    Generates a completion using the Hugging Face Inference API.
+
+    Args:
+        prompt (str): The input prompt to send to Hugging Face.
+
+    Returns:
+        str: The generated text completion from Hugging Face.
+
+    Raises:
+        requests.exceptions.HTTPError: If there is an HTTP error during the request 
+                                         (retried up to 3 times with exponential backoff).
+    """
+```
 
 ## Usage Examples
 
-1. **Regenerating documentation for a single file:**
-   ```
-   python main.py -f path/to/single_file.py
-   ```
+```python
+# Example usage (assuming you have a configuration file and necessary API keys)
+from llm_backend import LLMBackend, DocumentationGenerator
+import argparse
+import logging
+import os
 
-2. **Processing files in a specific input directory:**
-   ```
-   python main.py -i path/to/input_directory
-   ```
+def main():
+    parser = argparse.ArgumentParser(description='Documentation Generator')
+    parser.add_argument('--file', '-f', 
+                       help='Specify a single file to regenerate its documentation')
+    parser.add_argument('--input', '-i',
+                       help='Specify an input directory to process')
+    parser.add_argument('--config', '-c', 
+                       default='config.yaml',
+                       help='Path to configuration file (default: config.yaml)')
+    args = parser.parse_args()
 
-3. **Using a custom configuration file:**
-   ```
-   python main.py -c path/to/custom_config.yaml
-   ```
+    try:
+        generator = DocumentationGenerator(config_path=args.config)
+        generator.generate_docs(single_file=args.file, input_dir=args.input)
+    except Exception as e:
+        logging.error(f"Documentation generation failed: {str(e)}")
+        raise
+
+if __name__ == "__main__":
+    main()
+```

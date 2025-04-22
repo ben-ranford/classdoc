@@ -10,7 +10,7 @@ ClassDoc is a documentation generator that uses an LLM to automatically create m
 
 Change the code at your own risk to include whatever formats you want to use it with.
 
-Want to see an example? head to docs/main.md. Generated using mistral-nemo-instruct-2407 (MLX) using LM Studio.
+Want to see an example? head to docs/main.md. Generated using gemma-3-12b-it-qat Q4 (GGUF) using the LM Studio backend.
 
 ## Installation
 
@@ -54,8 +54,8 @@ cd ClassDoc
 
 #### Lotsa options
 
-`python script.py --input /path/to/input/directory --config custom_config.yaml`
+`python main.py --input /path/to/input/directory --config custom_config.yaml`
 
 #### Plain and simple
 
-`python script.py --input /path/to/input/directory`
+`python main.py --input /path/to/input/directory`
