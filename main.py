@@ -73,7 +73,11 @@ class LLMBackend:
                     content += delta
                     if printstream and delta:
                         print(delta, end="", flush=True)
-                except Exception:
+                except json.JSONDecodeError as e:
+                    self.logger.error(f"JSON decoding error during streaming: {str(e)}")
+                    continue
+                except Exception as e:
+                    self.logger.error(f"Unexpected error during streaming: {str(e)}")
                     continue
             if printstream:
                 print(flush=True)
