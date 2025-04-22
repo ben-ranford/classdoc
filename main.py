@@ -45,14 +45,43 @@ class LLMBackend:
     )
     def _lmstudio_completion(self, prompt):
         url = f"http://localhost:{self.config['lmstudio']['port']}/v1/chat/completions"
+        lmstudio_cfg = self.config.get('lmstudio', {})
+        streaming = lmstudio_cfg.get('streaming', False)
+        printstream = lmstudio_cfg.get('printstream', False)
         payload = {
             "messages": [{"role": "user", "content": prompt}],
             "model": self.config['lmstudio']['model'],
             "temperature": 0.7
         }
-        response = requests.post(url, json=payload)
-        response.raise_for_status()
-        return response.json()['choices'][0]['message']['content']
+        if streaming:
+            payload["stream"] = True
+            response = requests.post(url, json=payload, stream=True)
+            response.raise_for_status()
+            content = ""
+            for line in response.iter_lines(decode_unicode=True):
+                if not line:
+                    continue
+                try:
+                    data = line.strip()
+                    if data.startswith("data:"):
+                        data = data[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    import json
+                    chunk = json.loads(data)
+                    delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                    content += delta
+                    if printstream and delta:
+                        print(delta, end="", flush=True)
+                except Exception:
+                    continue
+            if printstream:
+                print(flush=True)
+            return content
+        else:
+            response = requests.post(url, json=payload)
+            response.raise_for_status()
+            return response.json()['choices'][0]['message']['content']
 
     @retry(
         stop=stop_after_attempt(3),

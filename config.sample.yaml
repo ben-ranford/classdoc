@@ -28,6 +28,8 @@ perplexity:
 lmstudio:
   port: 1234
   model: your_model_name
+  streaming: true
+  printstream: true
 
 # HuggingFace
 huggingface:
