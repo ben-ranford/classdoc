@@ -39,4 +39,4 @@ def method_name(self, param1: type, param2: type) -> return_type:
 ```
 
 ## Usage Examples
-usage examples in code blocks go here if applicable
+Usage examples in code blocks go here if applicable.
