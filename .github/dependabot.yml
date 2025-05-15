@@ -11,5 +11,3 @@ updates:
     labels:
       - "dependencies"
     open-pull-requests-limit: 5
-    ignore:
-      - dependency-name: "pydantic-core"
