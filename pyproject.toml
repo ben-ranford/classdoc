@@ -15,7 +15,7 @@ tenacity = "^9.0.0"
 tqdm = "^4.66.5"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^7.4.0"
+pytest = "^8.3.5"
 pytest-cov = "^4.1.0"
 pytest-mock = "^3.11.1"
 requests-mock = "^1.11.0"
