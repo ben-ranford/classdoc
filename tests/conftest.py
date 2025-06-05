@@ -69,6 +69,25 @@ def _setup_openai_mocks(monkeypatch, openai_content):
     return mock_client
 
 
+def _set_response_attribute(response, key, value):
+    """Set a single attribute on the response object with special handling."""
+    setattr(response, key, value)
+    
+    # Handle special cases
+    if key == 'json_return':
+        response.json.return_value = value
+    elif key == 'raise_for_status_error':
+        _configure_raise_for_status(response, value)
+
+
+def _configure_raise_for_status(response, error_value):
+    """Configure the raise_for_status behavior on response."""
+    if error_value:
+        response.raise_for_status.side_effect = requests.exceptions.HTTPError(f"{error_value}")
+    else:
+        response.raise_for_status.side_effect = None
+
+
 def _create_response_factory(predefined_response):
     """Create a factory that returns the predefined response or customized ones."""
     def response_factory(*args, **kwargs):
@@ -76,17 +95,7 @@ def _create_response_factory(predefined_response):
         call_specific = kwargs.pop('_mock_response', None)
         if call_specific:
             for key, value in call_specific.items():
-                setattr(predefined_response, key, value)
-
-                # Special handling for json method which is a function
-                if key == 'json_return':
-                    predefined_response.json.return_value = value
-                # Special handling for raise_for_status
-                elif key == 'raise_for_status_error':
-                    if value:
-                        predefined_response.raise_for_status.side_effect = requests.exceptions.HTTPError(f"{value}")
-                    else:
-                        predefined_response.raise_for_status.side_effect = None
+                _set_response_attribute(predefined_response, key, value)
         return predefined_response
     return response_factory
 
