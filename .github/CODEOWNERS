@@ -1,0 +1,5 @@
+# Global code ownership
+# This file defines who will be requested for review when pull requests are created
+# including Dependabot PRs, replacing the deprecated reviewers field in dependabot.yml
+
+* @ben-ranford

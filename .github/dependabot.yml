@@ -13,5 +13,3 @@ updates:
     open-pull-requests-limit: 5
     assignees:
       - "ben-ranford"
-    reviewers:
-      - "ben-ranford"
