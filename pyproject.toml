@@ -10,7 +10,7 @@ package-mode = false
 python = ">=3.11,<3.14"
 openai = "^1.97.0"
 pyyaml = "^6.0.2"
-aiohttp = "^3.12.14"
+aiohttp = "^3.12.15"
 tenacity = "^9.0.0"
 tqdm = "^4.66.5"
 
